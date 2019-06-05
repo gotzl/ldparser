@@ -16,9 +16,9 @@ date              0x10
 unknown           0x10
 time              0x10
 unknown           0x10
-location          0x40
+name              0x40
 unknown           0x80
-location          0x40
+subject           0x40
 
 ### channel meta data
 description       length
@@ -59,11 +59,17 @@ class ldhead(object):
             # pointer to some text
             descr_ = np.fromfile(f, dtype=dt32, count=1)[0]
 
-            f.seek(0x5e)
+            f.seek(0x36, 1)
             date = decode_string(f.read(0x10))
 
-            f.seek(0x7e)
+            f.seek(0x10,1)
             time = decode_string(f.read(0x10))
+
+            f.seek(0x10,1)
+            self.name = decode_string(f.read(0x40))
+
+            f.seek(0x80,1)
+            self.subject = decode_string(f.read(0x40))
 
             f.seek(descr_)
             self.descr1 = decode_string(f.read(0x10))
@@ -78,7 +84,9 @@ class ldhead(object):
                     '%s %s'%(date, time), '%d/%m/%Y %H:%M:%S')
 
     def __str__(self):
-        return '%s %s'%(self.descr1, self.descr2)
+        return 'name:    %s\n' \
+               'subject: %s\n' \
+               'desc1:   %s descr2: %s\n'%(self.name, self.subject, self.descr1, self.descr2)
 
 
 class ldchan(object):
@@ -186,6 +194,7 @@ if __name__ == '__main__':
 
     if len(sys.argv)!=2:
         print("Usage: ldparser.py /some/path/")
+        exit(1)
 
     for f in glob.glob('%s/*.ld'%sys.argv[1]):
         print(os.path.basename(f))
