@@ -4,37 +4,49 @@ Code created through reverse engineering the data format.
 So far, the decoding looks as follows:
 
 ### header
-description       length
-----------------------
-unknown           0x8
-channel meta ptr  0x4
-channel data ptr  0x4
-unknown           0x14
-descr ptr         0x4
-unknown           0x36
-date              0x10
+description       length    offset
+-----------------------------------
+unknown           0x8       0x000
+channel meta ptr  0x4       0x008
+channel data ptr  0x4       0x00c
+unknown           0x14      0x010
+descr ptr         0x4       0x024
+unknown           0x1a      0x028
+unknown           0x4       0x042
+device serial     0x4       0x046
+device type       0x8       0x04a
+device version    0x4       0x052
+unknown           0x4       0x056
+unknown           0x4       0x05a
+date              0x10      0x05e
 unknown           0x10
 time              0x10
 unknown           0x10
 name              0x40
-unknown           0x80
-subject           0x40
+vehicle           0x40
+unknown           0x40
+venue             0x40
 
 ### channel meta data
-description       length
-----------------------
-prev_addr         0x4
-next_addr         0x4
-data ptr          0x4
-n_data            0x4
-somecnt           0x4
-datawordsize      0x2
-rec freq          0x2
-unknown           0x8
-name              0x28
-unit              0x0c
-unknown           0x18
-unknown           0x10
+description       length    offset
+---------------------------------
+prev_addr         0x4       0x00
+next_addr         0x4       0x04
+data ptr          0x4       0x08
+n_data            0x4       0x0c
+somecnt           0x2       0x10
+datatype          0x2       0x12
+datatype          0x2       0x14
+rec freq          0x2       0x16
+shift             0x2       0x18
+unknown           0x2       0x1a
+scale             0x2       0x1c
+dec_places        0x2       0x1e
+name              0x28      0x20
+unit              0x0c      0x48
+scale             0x2       0x54
+unknown           0x2       0x56
+unknown           0x1a      0x58
 """
 
 import datetime
@@ -67,26 +79,35 @@ class ldhead(object):
 
             f.seek(0x10,1)
             self.name = decode_string(f.read(0x40))
+            self.vehicle = decode_string(f.read(0x40))
 
-            f.seek(0x80,1)
-            self.subject = decode_string(f.read(0x40))
+            f.seek(0x40,1)
+            self.venue = decode_string(f.read(0x40))
 
             f.seek(descr_)
-            self.descr1 = decode_string(f.read(0x10))
+            self.event = decode_string(f.read(0x10))
 
             f.seek(0x470, 1)
             descr_ = np.fromfile(f, dtype=dt32, count=1)[0]
 
-            f.seek(descr_)
-            self.descr2 = decode_string(f.read(0x10))
+            self.descr = None
+            if descr_>0:
+                f.seek(descr_)
+                self.descr = decode_string(f.read(0x10))
 
-        self.datetime =  datetime.datetime.strptime(
+        try:
+            self.datetime = datetime.datetime.strptime(
                     '%s %s'%(date, time), '%d/%m/%Y %H:%M:%S')
+        except ValueError:
+            self.datetime = datetime.datetime.strptime(
+                '%s %s'%(date, time), '%d/%m/%Y %H:%M')
 
     def __str__(self):
         return 'name:    %s\n' \
-               'subject: %s\n' \
-               'desc1:   %s descr2: %s\n'%(self.name, self.subject, self.descr1, self.descr2)
+               'vehicle: %s\n' \
+               'venue: %s\n' \
+               'event:   %s descr: %s\n'%(
+            self.name, self.vehicle, self.venue, self.event, self.descr)
 
 
 class ldchan(object):
@@ -107,16 +128,24 @@ class ldchan(object):
             (self.prev_meta_ptr, self.next_meta_ptr, self.data_ptr, self.data_len) =  \
                 np.fromfile(f, dtype=dt32, count=4)
 
-            f.seek(4, 1) # some count, not needed?
+            f.seek(2, 1) # some count, not needed?
 
-            dtype, self.freq = np.fromfile(f, dtype=dt16, count=2)
-            self.dtype = [np.float16, np.float32][(dtype//2)-1]
+            dtype_a, dtype, self.freq = np.fromfile(f, dtype=dt16, count=3)
+            if dtype_a == 0x07:
+                self.dtype = [None, np.float16, None, np.float32][dtype-1]
+            else:
+                self.dtype = [None, np.int16, None, np.int32][dtype-1]
 
-            self.dunno = np.fromfile(f, dtype=dt32, count=2)
+            self.shift, self.u1, self.scale, self.dec = \
+                np.fromfile(f, dtype=np.int16, count=4)#.astype(np.int32)
 
             self.name = decode_string(f.read(0x20))
             self.short_name = (decode_string(f.read(0x8)))
             self.unit = decode_string(f.read(0xc))
+
+            self.u2, self.u3, self.u4, self.u5 = \
+                np.fromfile(f, dtype=np.int16, count=4)#.astype(np.int32)
+
             # print_hex(f.read(28))
 
             # jump to data and read
@@ -124,6 +153,8 @@ class ldchan(object):
             try:
                 self.data = np.fromfile(f,
                     count=self.data_len, dtype=self.dtype)
+
+                self.data = self.data/self.scale * pow(10.,-self.dec) + self.shift
 
                 if len(self.data)!=self.data_len:
                     raise ValueError("Not all data read!")
