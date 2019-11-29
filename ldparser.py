@@ -19,13 +19,14 @@ device version    0x4       0x052
 unknown           0x4       0x056
 unknown           0x4       0x05a
 date              0x10      0x05e
-unknown           0x10
-time              0x10
-unknown           0x10
-name              0x40
-vehicle           0x40
-unknown           0x40
-venue             0x40
+unknown           0x10      0x06e
+time              0x10      0x07e
+unknown           0x10      0x08e
+name              0x40      0x09e
+vehicle1          0x40      0x0ce
+unknown           0x40      0x11e
+venue             0x40      0x15e
+vehicle2          0x40      0x6e2
 
 ### channel meta data
 description       length    offset
@@ -94,6 +95,10 @@ class ldhead(object):
             if descr_>0:
                 f.seek(descr_)
                 self.descr = decode_string(f.read(0x10))
+
+            if len(self.vehicle)==0:
+                f.seek(0x6e2)
+                self.vehicle = decode_string(f.read(0x40))
 
         try:
             self.datetime = datetime.datetime.strptime(
