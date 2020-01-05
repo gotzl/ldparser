@@ -1,6 +1,6 @@
 Small tool to parse MoTec ld files.
 
-Primarily, this parser was written to parse telemetry information of ld files written by Assetto Corsa Competizione. However, the parser should work with other ld files as well.
+Primarily, this parser was written to parse telemetry information of ld files written by Assetto Corsa Competizione, see also the related project ['acctelemetry']([https://github.com/gotzl/acctelemetry). However, the parser should work with other ld files as well.
 It was tested with the sample ld files that come with a MoTec Mi2 Pro installation as well as with files written by ACC.
 
 The decoding of the ld file is solely based on reverse engineering the binary data.
