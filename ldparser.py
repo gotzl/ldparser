@@ -118,14 +118,16 @@ class ldhead(object):
 class ldchan(object):
     """Channel (meta) data
 
-    Parses and stores the channel meta as well as the
-    actual data of a channel in a ld file.
+    Parses and stores the channel meta data of a channel in a ld file.
     Needs the pointer to the channel meta block in the ld file.
+    The actual data is read on demand using the 'data' property.
     """
     def __init__(self, f_, meta_ptr, num):
         # type: (str, int, int) -> None
         self.meta_ptr = meta_ptr
         self.num = num
+        self._f = f_
+        self._data = None
 
         with open(f_,'rb') as f:
             f.seek(meta_ptr)
@@ -142,33 +144,41 @@ class ldchan(object):
                 self.dtype = [None, np.int16, None, np.int32][dtype-1]
 
             self.shift, self.u1, self.scale, self.dec = \
-                np.fromfile(f, dtype=np.int16, count=4)#.astype(np.int32)
+                np.fromfile(f, dtype=np.int16, count=4)
 
             self.name = decode_string(f.read(0x20))
             self.short_name = (decode_string(f.read(0x8)))
             self.unit = decode_string(f.read(0xc))
 
             self.u2, self.u3, self.u4, self.u5 = \
-                np.fromfile(f, dtype=np.int16, count=4)#.astype(np.int32)
+                np.fromfile(f, dtype=np.int16, count=4)
 
             # print_hex(f.read(28))
 
+    @property
+    def data(self):
+        # type: () -> np.array
+        """ Read the data words of the channel
+        """
+        if self._data is None:
             # jump to data and read
-            f.seek(self.data_ptr)
-            try:
-                self.data = np.fromfile(f,
-                    count=self.data_len, dtype=self.dtype)
+            with open(self._f, 'rb') as f:
+                f.seek(self.data_ptr)
+                try:
+                    self._data = np.fromfile(f,
+                                            count=self.data_len, dtype=self.dtype)
 
-                self.data = self.data/self.scale * pow(10.,-self.dec) + self.shift
+                    self._data = self._data/self.scale * pow(10., -self.dec) + self.shift
 
-                if len(self.data)!=self.data_len:
-                    raise ValueError("Not all data read!")
+                    if len(self._data) != self.data_len:
+                        raise ValueError("Not all data read!")
 
-            except ValueError as v:
-                print(v, self.num, self.name, self.freq,
-                      hex(self.data_ptr), hex(self.data_len),
-                      hex(len(self.data)),hex(f.tell()))
-                # raise v
+                except ValueError as v:
+                    print(v, self.num, self.name, self.freq,
+                          hex(self.data_ptr), hex(self.data_len),
+                          hex(len(self._data)),hex(f.tell()))
+                    # raise v
+        return self._data
 
     def __str__(self):
         return 'chan %i: %s (%s) [%s], %i Hz'%(
@@ -237,7 +247,7 @@ if __name__ == '__main__':
         head_, chans = read_ldfile(f)
 
         print(head_)
-        print(list(map(str,chans)))
+        print(list(map(str, chans)))
         print()
 
         # create plots for all channels with the same frequency
