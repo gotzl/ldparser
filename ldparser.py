@@ -27,8 +27,8 @@ class ldData(object):
             item = col[0]
         return self.channs[item]
 
-    def __setitem__(self, key, value):
-        self.channs[key] = value
+    def __iter__(self):
+        return iter([x.name for x in self.channs])
 
     @classmethod
     def frompd(cls, df):
@@ -42,20 +42,22 @@ class ldData(object):
 
         # create test dataframe
         df = pd.DataFrame(np.random.randn(6,4),columns=list('ABCD'))
+        print(df)
         # create an lddata object from the dataframe
         l = ldData.frompd(df)
         # write an .ld file
         l.write('/tmp/test.ld')
-        print(l.head)
 
         # just to check, read back the file
         l = ldData.fromfile('/tmp/test.ld')
-        print(l.head)
+        # create pandas dataframe
+        df = pd.DataFrame(data={c: l[c].data for c in l})
+        print(df)
 
         """
 
         # for now, fix datatype and frequency
-        freq, dtype = 10, np.int32
+        freq, dtype = 10, np.float32
 
         # pointer to meta data of first channel
         meta_ptr = struct.calcsize(ldHead.fmt)
