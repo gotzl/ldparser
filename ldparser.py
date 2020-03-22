@@ -111,42 +111,57 @@ class ldData(object):
         # type: (str) -> ()
         """Write an ld file containing the current header information and channel data
         """
+
+        # convert the data using scale/shift etc before writing the data
+        conv_data = lambda c: (c.data - c.shift) * c.scale / pow(10., -c.dec)
+
         with open(f, 'wb') as f_:
             self.head.write(f_, len(self.channs))
             f_.seek(self.channs[0].meta_ptr)
-            list(map(lambda c:c.write(f_), self.channs))
-            list(map(lambda c:f_.write(c.data), self.channs))
+            list(map(lambda c: c[1].write(f_, c[0]), enumerate(self.channs)))
+            list(map(lambda c: f_.write(conv_data(c)), self.channs))
 
 
 class ldEvent(object):
     fmt = '<64s64s1024sH'
 
     def __init__(self, name, session, comment, venue_ptr, venue):
-        self.name, self.session, self.comment, self.venue_ptr, self.venue = name, session, comment, venue_ptr, venue
+        self.name, self.session, self.comment, self.venue_ptr, self.venue = \
+            name, session, comment, venue_ptr, venue
 
     @classmethod
     def fromfile(cls, f):
         # type: (file) -> ldEvent
-        """Parses and stores the header information of an ld file
+        """Parses and stores the event information in an ld file
         """
-        name, session, comment, venue_ptr = struct.unpack(ldEvent.fmt, f.read(struct.calcsize(ldEvent.fmt)))
+        name, session, comment, venue_ptr = struct.unpack(
+            ldEvent.fmt, f.read(struct.calcsize(ldEvent.fmt)))
+        name, session, comment = map(decode_string, [name, session, comment])
+
         venue = None
         if venue_ptr > 0:
             f.seek(venue_ptr)
             venue = ldVenue.fromfile(f)
-        return cls(decode_string(name), session, comment, venue_ptr, venue)
+
+        return cls(name, session, comment, venue_ptr, venue)
 
     def write(self, f):
-        f.write(struct.pack(ldEvent.fmt, self.name.encode(), self.session.encode(), self.comment.encode(), self.venue_ptr))
-        f.seek(self.venue_ptr)
-        self.venue.write(f)
+        f.write(struct.pack(ldEvent.fmt,
+                            self.name.encode(),
+                            self.session.encode(),
+                            self.comment.encode(),
+                            self.venue_ptr))
+
+        if self.venue_ptr > 0:
+            f.seek(self.venue_ptr)
+            self.venue.write(f)
 
     def __str__(self):
         return "%s; venue: %s"%(self.name, self.venue)
 
 
 class ldVenue(object):
-    fmt = '<1098sH'
+    fmt = '<64s1034xH'
 
     def __init__(self, name, vehicle_ptr, vehicle):
         self.name, self.vehicle_ptr, self.vehicle = name, vehicle_ptr, vehicle
@@ -154,43 +169,47 @@ class ldVenue(object):
     @classmethod
     def fromfile(cls, f):
         # type: (file) -> ldVenue
-        """Parses and stores the header information of an ld file
+        """Parses and stores the venue information in an ld file
         """
         name, vehicle_ptr = struct.unpack(ldVenue.fmt, f.read(struct.calcsize(ldVenue.fmt)))
-        print(decode_string(name), hex(vehicle_ptr))
-        f.seek(vehicle_ptr)
-        vehicle = ldVehicle.fromfile(f)
+
+        vehicle = None
+        if vehicle_ptr > 0:
+            f.seek(vehicle_ptr)
+            vehicle = ldVehicle.fromfile(f)
         return cls(decode_string(name), vehicle_ptr, vehicle)
 
     def write(self, f):
         f.write(struct.pack(ldVenue.fmt, self.name.encode(), self.vehicle_ptr))
-        f.seek(self.vehicle_ptr)
-        self.vehicle.write(f)
+
+        if self.vehicle_ptr > 0:
+            f.seek(self.vehicle_ptr)
+            self.vehicle.write(f)
 
     def __str__(self):
         return "%s; vehicle: %s"%(self.name, self.vehicle)
 
 
 class ldVehicle(object):
-    fmt = '<192sI'
+    fmt = '<64s128xI32s32s'
 
-    def __init__(self, id, weight):
-        self.id, self.weight = id, weight
+    def __init__(self, id, weight, type, comment):
+        self.id, self.weight, self.type, self.comment = id, weight, type, comment
 
     @classmethod
     def fromfile(cls, f):
         # type: (file) -> ldVehicle
-        """Parses and stores the header information of an ld file
+        """Parses and stores the vehicle information in an ld file
         """
-        id, weight = struct.unpack(ldVehicle.fmt, f.read(struct.calcsize(ldVehicle.fmt)))
-        print(hex(f.tell()), id, weight)
-        return cls(decode_string(id), weight)
+        id, weight, type, comment = struct.unpack(ldVehicle.fmt, f.read(struct.calcsize(ldVehicle.fmt)))
+        id, type, comment = map(decode_string, [id, type, comment])
+        return cls(id, weight, type, comment)
 
     def write(self, f):
         f.write(struct.pack(ldVehicle.fmt, self.id.encode(), self.weight))
 
     def __str__(self):
-        return "%s"%(self.id)
+        return "%s (type: %s, weight: %i, %s)"%(self.id, self.type, self.weight, self.comment)
 
 
 class ldHead(object):
@@ -212,11 +231,15 @@ class ldHead(object):
         "16s"     # time
         "16x"     # ??
         "64s"     # driver
-        "128s"    # vehicleid
-        "1152s"   # venue
+        "64s"     # vehicleid
+        "64x"     # ??
+        "64s"     # venue
+        "64x"     # ??
+        "1024x"   # ??
         "I"       # enable "pro logging" (some magic number?)
         "66x"     # ??
-        "190s"    # short comment
+        "64s"     # short comment
+        "126x"    # ??
         "64s"     # event
         "64s"     # session
     )
@@ -290,13 +313,13 @@ class ldChan(object):
 
     fmt = '<' + (
         "IIII"    # prev_addr next_addr data_ptr n_data
-        "2x"      # counter?
+        "H"       # some counter?
         "HHH"     # datatype datatype rec_freq
-        "HxxHH"   # shift ?? scale dec_places 
+        "HHHH"    # shift ?? scale dec_places 
         "32s"     # name
         "8s"      # short name
         "12s"     # unit
-        "40x"     # ?
+        "40x"     # ? (40 bytes for ACC, 32 bytes for acti)
     )
 
     def __init__(self, _f, meta_ptr, prev_meta_ptr, next_meta_ptr, data_ptr, data_len,
@@ -323,30 +346,32 @@ class ldChan(object):
         with open(_f, 'rb') as f:
             f.seek(meta_ptr)
 
-            (prev_meta_ptr, next_meta_ptr, data_ptr, data_len,
-             dtype_a, dtype, freq, shift, scale, dec,
+            (prev_meta_ptr, next_meta_ptr, data_ptr, data_len, _,
+             dtype_a, dtype, freq, shift, _, scale, dec,
              name, short_name, unit) = struct.unpack(ldChan.fmt, f.read(struct.calcsize(ldChan.fmt)))
 
-        if dtype_a == 0x07:
-            dtype = [None, np.float16, None, np.float32][dtype-1]
-        else:
-            dtype = [None, np.int16, None, np.int32][dtype-1]
-
         name, short_name, unit = map(decode_string, [name, short_name, unit])
+
+        if dtype_a in [0x07]:
+            dtype = [None, np.float16, None, np.float32][dtype-1]
+        elif dtype_a in [0, 0x03]:
+            dtype = [None, np.int16, None, np.int32][dtype-1]
+        else: raise Exception('Datatype %i not recognized'%dtype_a)
+
         return cls(_f, meta_ptr, prev_meta_ptr, next_meta_ptr, data_ptr, data_len,
                    dtype, freq, shift, scale, dec,name, short_name, unit)
 
-    def write(self, f):
+    def write(self, f, n):
         if self.dtype == np.float16 or self.dtype == np.float32:
             dtype_a = 0x07
             dtype = {np.float16: 2, np.float32: 4}[self.dtype]
         else:
-            dtype_a = 0x0
+            dtype_a = 0x03
             dtype = {np.int16: 2, np.int32: 4}[self.dtype]
 
         f.write(struct.pack(ldChan.fmt,
                             self.prev_meta_ptr, self.next_meta_ptr, self.data_ptr, self.data_len,
-                            dtype_a, dtype, self.freq, self.shift, self.scale, self.dec,
+                            0x2ee1+n, dtype_a, dtype, self.freq, self.shift, 1, self.scale, self.dec,
                             self.name.encode(), self.short_name.encode(), self.unit.encode()))
 
     @property
@@ -385,7 +410,7 @@ def decode_string(bytes):
     # type: (bytes) -> str
     """decode the bytes and remove trailing zeros
     """
-    return bytes.decode('ascii').rstrip('\0').strip()
+    return bytes.decode('ascii').strip().rstrip('\0').strip()
 
 
 def read_channels(f_, meta_ptr):
