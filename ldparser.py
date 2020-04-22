@@ -410,8 +410,12 @@ def decode_string(bytes):
     # type: (bytes) -> str
     """decode the bytes and remove trailing zeros
     """
-    return bytes.decode('ascii').strip().rstrip('\0').strip()
-
+    try:
+        return bytes.decode('ascii').strip().rstrip('\0').strip()
+    except Exception as e:
+        print("Could not decode string: %s - %s"%(e, bytes))
+        return ""
+        # raise e
 
 def read_channels(f_, meta_ptr):
     # type: (str, int) -> list
