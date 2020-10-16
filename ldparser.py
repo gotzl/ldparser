@@ -354,7 +354,7 @@ class ldChan(object):
 
         if dtype_a in [0x07]:
             dtype = [None, np.float16, None, np.float32][dtype-1]
-        elif dtype_a in [0, 0x03]:
+        elif dtype_a in [0, 0x03, 0x05]:
             dtype = [None, np.int16, None, np.int32][dtype-1]
         else: raise Exception('Datatype %i not recognized'%dtype_a)
 
