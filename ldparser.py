@@ -82,7 +82,7 @@ class ldData(object):
             chan = ldChan(None,
                           meta_ptr, prev, next if n < len(cols)-1 else 0,
                           data_ptr, len(df[col]),
-                          dtype, freq, 0, 1, 0,
+                          dtype, freq, 0, 1, 1, 0,
                           col, col, "m")
 
             # link data to the channel
@@ -113,7 +113,7 @@ class ldData(object):
         """
 
         # convert the data using scale/shift etc before writing the data
-        conv_data = lambda c: (c.data - c.shift) * c.scale / pow(10., -c.dec)
+        conv_data = lambda c: ((c.data / c.mul) - c.shift) * c.scale / pow(10., -c.dec)
 
         with open(f, 'wb') as f_:
             self.head.write(f_, len(self.channs))
@@ -206,7 +206,7 @@ class ldVehicle(object):
         return cls(id, weight, type, comment)
 
     def write(self, f):
-        f.write(struct.pack(ldVehicle.fmt, self.id.encode(), self.weight))
+        f.write(struct.pack(ldVehicle.fmt, self.id.encode(), self.weight, self.type.encode(), self.comment.encode()))
 
     def __str__(self):
         return "%s (type: %s, weight: %i, %s)"%(self.id, self.type, self.weight, self.comment)
@@ -315,7 +315,7 @@ class ldChan(object):
         "IIII"    # prev_addr next_addr data_ptr n_data
         "H"       # some counter?
         "HHH"     # datatype datatype rec_freq
-        "HHHH"    # shift ?? scale dec_places 
+        "HHHH"    # shift mul scale dec_places 
         "32s"     # name
         "8s"      # short name
         "12s"     # unit
@@ -323,7 +323,7 @@ class ldChan(object):
     )
 
     def __init__(self, _f, meta_ptr, prev_meta_ptr, next_meta_ptr, data_ptr, data_len,
-                 dtype, freq, shift, scale, dec,
+                 dtype, freq, shift, mul, scale, dec,
                  name, short_name, unit):
 
         self._f = _f
@@ -332,10 +332,10 @@ class ldChan(object):
 
         (self.prev_meta_ptr, self.next_meta_ptr, self.data_ptr, self.data_len,
         self.dtype, self.freq,
-        self.shift, self.scale, self.dec,
+        self.shift, self.mul, self.scale, self.dec,
         self.name, self.short_name, self.unit) = prev_meta_ptr, next_meta_ptr, data_ptr, data_len,\
                                                  dtype, freq,\
-                                                 shift, scale, dec,\
+                                                 shift, mul, scale, dec,\
                                                  name, short_name, unit
 
     @classmethod
@@ -347,7 +347,7 @@ class ldChan(object):
             f.seek(meta_ptr)
 
             (prev_meta_ptr, next_meta_ptr, data_ptr, data_len, _,
-             dtype_a, dtype, freq, shift, _, scale, dec,
+             dtype_a, dtype, freq, shift, mul, scale, dec,
              name, short_name, unit) = struct.unpack(ldChan.fmt, f.read(struct.calcsize(ldChan.fmt)))
 
         name, short_name, unit = map(decode_string, [name, short_name, unit])
@@ -359,7 +359,7 @@ class ldChan(object):
         else: raise Exception('Datatype %i not recognized'%dtype_a)
 
         return cls(_f, meta_ptr, prev_meta_ptr, next_meta_ptr, data_ptr, data_len,
-                   dtype, freq, shift, scale, dec,name, short_name, unit)
+                   dtype, freq, shift, mul, scale, dec,name, short_name, unit)
 
     def write(self, f, n):
         if self.dtype == np.float16 or self.dtype == np.float32:
@@ -371,7 +371,7 @@ class ldChan(object):
 
         f.write(struct.pack(ldChan.fmt,
                             self.prev_meta_ptr, self.next_meta_ptr, self.data_ptr, self.data_len,
-                            0x2ee1+n, dtype_a, dtype, self.freq, self.shift, 1, self.scale, self.dec,
+                            0x2ee1+n, dtype_a, dtype, self.freq, self.shift, self.mul, self.scale, self.dec,
                             self.name.encode(), self.short_name.encode(), self.unit.encode()))
 
     @property
@@ -387,7 +387,7 @@ class ldChan(object):
                     self._data = np.fromfile(f,
                                             count=self.data_len, dtype=self.dtype)
 
-                    self._data = self._data/self.scale * pow(10., -self.dec) + self.shift
+                    self._data = (self._data/self.scale * pow(10., -self.dec) + self.shift) * self.mul
 
                     if len(self._data) != self.data_len:
                         raise ValueError("Not all data read!")
