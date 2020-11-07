@@ -418,17 +418,16 @@ def decode_string(bytes):
         # raise e
 
 def read_channels(f_, meta_ptr):
-    # type: (str, int) -> list
+    # type: (str, int) -> dict
     """ Read channel data inside ld file
-
     Cycles through the channels inside an ld file,
      starting with the one where meta_ptr points to.
      Returns a list of ldchan objects.
     """
-    chans = []
+    chans = {}
     while meta_ptr:
         chan_ = ldChan.fromfile(f_, meta_ptr)
-        chans.append(chan_)
+        chans[chan_.name] = chan_
         meta_ptr = chan_.next_meta_ptr
     return chans
 
