@@ -411,7 +411,7 @@ def decode_string(bytes):
     """decode the bytes and remove trailing zeros
     """
     try:
-        return bytes.decode('ascii').strip().rstrip('\0').strip()
+        return bytes.decode('cp1252').strip().rstrip('\0').strip()
     except Exception as e:
         print("Could not decode string: %s - %s"%(e, bytes))
         return ""
