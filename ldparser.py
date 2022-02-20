@@ -119,7 +119,7 @@ class ldData(object):
             self.head.write(f_, len(self.channs))
             f_.seek(self.channs[0].meta_ptr)
             list(map(lambda c: c[1].write(f_, c[0]), enumerate(self.channs)))
-            list(map(lambda c: f_.write(conv_data(c)), self.channs))
+            list(map(lambda c: f_.write(conv_data(c).astype(c.dtype)), self.channs))
 
 
 class ldEvent(object):
