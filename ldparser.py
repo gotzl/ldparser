@@ -366,7 +366,7 @@ class ldChan(object):
             dtype_a = 0x07
             dtype = {np.float16: 2, np.float32: 4}[self.dtype]
         else:
-            dtype_a = 0x03
+            dtype_a = 0x05 if self.dtype == np.int32 else 0x03
             dtype = {np.int16: 2, np.int32: 4}[self.dtype]
 
         f.write(struct.pack(ldChan.fmt,
