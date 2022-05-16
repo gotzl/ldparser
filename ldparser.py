@@ -315,7 +315,7 @@ class ldChan(object):
         "IIII"    # prev_addr next_addr data_ptr n_data
         "H"       # some counter?
         "HHH"     # datatype datatype rec_freq
-        "HHHh"    # shift mul scale dec_places
+        "hhhh"    # shift mul scale dec_places
         "32s"     # name
         "8s"      # short name
         "12s"     # unit
