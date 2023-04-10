@@ -60,7 +60,7 @@ class ldData(object):
         freq, dtype = 10, np.float32
 
         # pointer to meta data of first channel
-        meta_ptr = struct.calcsize(ldHead.fmt)
+        meta_ptr = struct.calcsize(ldHead.fmt) + struct.calcsize(ldEvent.fmt)
 
         # list of columns to read - only accept numeric data
         cols = [c for c in df.columns if np.issubdtype(df[c].dtype, np.number)]
@@ -68,12 +68,14 @@ class ldData(object):
         # pointer to data of first channel
         chanheadsize = struct.calcsize(ldChan.fmt)
         data_ptr = meta_ptr + len(cols) * chanheadsize
+        event_ptr = struct.calcsize(ldHead.fmt)
+        event = ldEvent("testevent", "0", "testcomment", 0, None)
 
         # create a mocked header
-        head = ldHead(meta_ptr, data_ptr, 0,  None,
+        head = ldHead(meta_ptr, data_ptr, event_ptr, event,
                        "testdriver",  "testvehicleid", "testvenue",
                        datetime.datetime.now(),
-                       "just a test", "testevent", "practice")
+                       "just a test")
 
         # create the channels, meta data and associated data
         channs, prev, next = [], 0, meta_ptr + chanheadsize
@@ -240,28 +242,26 @@ class ldHead(object):
         "66x"     # ??
         "64s"     # short comment
         "126x"    # ??
-        "64s"     # event
-        "64s"     # session
     )
 
-    def __init__(self, meta_ptr, data_ptr, aux_ptr, aux, driver, vehicleid, venue, datetime, short_comment, event, session):
-        self.meta_ptr, self.data_ptr, self.aux_ptr, self.aux, self.driver, self.vehicleid, \
-        self.venue, self.datetime, self.short_comment, self.event, self.session = meta_ptr, data_ptr, aux_ptr, aux, \
-                                                driver, vehicleid, venue, datetime, short_comment, event, session
+    def __init__(self, meta_ptr, data_ptr, event_ptr, event, driver, vehicleid, venue, datetime, short_comment):
+        self.meta_ptr, self.data_ptr, self.event_ptr, self.event, self.driver, self.vehicleid, \
+        self.venue, self.datetime, self.short_comment = meta_ptr, data_ptr, event_ptr, event, \
+                                                driver, vehicleid, venue, datetime, short_comment
 
     @classmethod
     def fromfile(cls, f):
         # type: (file) -> ldHead
         """Parses and stores the header information of an ld file
         """
-        (_, meta_ptr, data_ptr, aux_ptr,
+        (_, meta_ptr, data_ptr, event_ptr,
             _, _, _,
             _, _, _, _, n,
             date, time,
             driver, vehicleid, venue,
-            _, short_comment, event, session) = struct.unpack(ldHead.fmt, f.read(struct.calcsize(ldHead.fmt)))
-        date, time, driver, vehicleid, venue, short_comment, event, session = \
-            map(decode_string, [date, time, driver, vehicleid, venue, short_comment, event, session])
+            _, short_comment) = struct.unpack(ldHead.fmt, f.read(struct.calcsize(ldHead.fmt)))
+        date, time, driver, vehicleid, venue, short_comment = \
+            map(decode_string, [date, time, driver, vehicleid, venue, short_comment])
 
         try:
             # first, try to decode datatime with seconds
@@ -271,26 +271,26 @@ class ldHead(object):
             _datetime = datetime.datetime.strptime(
                 '%s %s'%(date, time), '%d/%m/%Y %H:%M')
 
-        aux = None
-        if aux_ptr > 0:
-            f.seek(aux_ptr)
-            aux = ldEvent.fromfile(f)
-        return cls(meta_ptr, data_ptr, aux_ptr, aux, driver, vehicleid, venue, _datetime, short_comment, event, session)
+        event = None
+        if event_ptr > 0:
+            f.seek(event_ptr)
+            event = ldEvent.fromfile(f)
+        return cls(meta_ptr, data_ptr, event_ptr, event, driver, vehicleid, venue, _datetime, short_comment)
 
     def write(self, f, n):
         f.write(struct.pack(ldHead.fmt,
                             0x40,
-                            self.meta_ptr, self.data_ptr, self.aux_ptr,
+                            self.meta_ptr, self.data_ptr, self.event_ptr,
                             1, 0x4240, 0xf,
                             0x1f44, "ADL".encode(), 420, 0xadb0, n,
                             self.datetime.date().strftime("%d/%m/%Y").encode(),
                             self.datetime.time().strftime("%H:%M:%S").encode(),
                             self.driver.encode(), self.vehicleid.encode(), self.venue.encode(),
-                            0xc81a4, self.short_comment.encode(), self.event.encode(), self.session.encode(),
+                            0xc81a4, self.short_comment.encode()
                             ))
-        if self.aux_ptr > 0:
-            f.seek(self.aux_ptr)
-            self.aux.write(f)
+        if self.event_ptr > 0:
+            f.seek(self.event_ptr)
+            self.event.write(f)
 
     def __str__(self):
         return 'driver:    %s\n' \
@@ -298,9 +298,8 @@ class ldHead(object):
                'venue:     %s\n' \
                'event:     %s\n' \
                'session:   %s\n' \
-               'short_comment: %s\n' \
-               'event_long:    %s'%(
-            self.driver, self.vehicleid, self.venue, self.event, self.session, self.short_comment, self.aux)
+               'short_comment: %s'%(
+            self.driver, self.vehicleid, self.venue, self.event.name, self.event.session, self.short_comment)
 
 
 class ldChan(object):
