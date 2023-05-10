@@ -351,11 +351,17 @@ class ldChan(object):
 
         name, short_name, unit = map(decode_string, [name, short_name, unit])
 
+        def safe_get(lst, idx):
+            if idx < 0 or idx >= len(lst):
+                return None
+            return lst[idx]
+
         if dtype_a in [0x07]:
-            dtype = [None, np.float16, None, np.float32][dtype-1]
+            dtype = safe_get([None, np.float16, None, np.float32], dtype - 1)
         elif dtype_a in [0, 0x03, 0x05]:
-            dtype = [None, np.int16, None, np.int32][dtype-1]
-        else: raise Exception('Datatype %i not recognized'%dtype_a)
+            dtype = safe_get([None, np.int16, None, np.int32], dtype - 1)
+        else:
+            dtype = None
 
         return cls(_f, meta_ptr, prev_meta_ptr, next_meta_ptr, data_ptr, data_len,
                    dtype, freq, shift, mul, scale, dec,name, short_name, unit)
@@ -378,6 +384,8 @@ class ldChan(object):
         # type: () -> np.array
         """ Read the data words of the channel
         """
+        if self.dtype is None:
+            raise ValueError(f'Channel {self.name} has unknown data type')
         if self._data is None:
             # jump to data and read
             with open(self._f, 'rb') as f:
